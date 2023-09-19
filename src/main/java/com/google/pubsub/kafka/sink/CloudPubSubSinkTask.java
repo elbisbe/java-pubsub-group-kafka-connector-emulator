@@ -25,10 +25,21 @@ import com.google.api.gax.batching.FlowControlSettings;
 import com.google.api.gax.batching.FlowController;
 import com.google.api.gax.core.FixedExecutorProvider;
 import com.google.api.gax.retrying.RetrySettings;
+
+// NEW IMPORTS
+import com.google.api.gax.core.CredentialsProvider;
+import com.google.api.gax.core.NoCredentialsProvider;
+import com.google.api.gax.rpc.FixedTransportChannelProvider;
+import com.google.api.gax.rpc.TransportChannelProvider;
+import com.google.api.gax.grpc.GrpcTransportChannel;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+//
+
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
-import com.google.pubsub.kafka.common.ConnectorCredentialsProvider;
+//import com.google.pubsub.kafka.common.ConnectorCredentialsProvider;
 import com.google.pubsub.kafka.common.ConnectorUtils;
 import com.google.pubsub.kafka.sink.CloudPubSubSinkConnector.OrderingKeySource;
 import com.google.pubsub.v1.ProjectTopicName;
@@ -83,7 +94,8 @@ public class CloudPubSubSinkTask extends SinkTask {
   private OrderingKeySource orderingKeySource;
   private boolean enableCompression;
   private long compressionBytesThreshold;
-  private ConnectorCredentialsProvider gcpCredentialsProvider;
+  private CredentialsProvider gcpCredentialsProvider;
+  //private ConnectorCredentialsProvider gcpCredentialsProvider;
   private com.google.cloud.pubsub.v1.Publisher publisher;
 
   /** Holds a list of the publishing futures that have not been processed for a single partition. */
@@ -140,7 +152,8 @@ public class CloudPubSubSinkTask extends SinkTask {
     enableCompression = (Boolean) validatedProps.get(CloudPubSubSinkConnector.ENABLE_COMPRESSION);
     compressionBytesThreshold =
         (Long) validatedProps.get(CloudPubSubSinkConnector.COMPRESSION_BYTES_THRESHOLD);
-    gcpCredentialsProvider = ConnectorCredentialsProvider.fromConfig(validatedProps);
+    gcpCredentialsProvider = NoCredentialsProvider.create();
+	//gcpCredentialsProvider = ConnectorCredentialsProvider.fromConfig(validatedProps);
     if (publisher == null) {
       // Only do this if we did not use the constructor.
       createPublisher();
@@ -381,7 +394,18 @@ public class CloudPubSubSinkTask extends SinkTask {
 
   private void createPublisher() {
     ProjectTopicName fullTopic = ProjectTopicName.of(cpsProject, cpsTopic);
+	ManagedChannel channel = ManagedChannelBuilder.forTarget(cpsEndpoint).usePlaintext().build();
+	TransportChannelProvider channelProvider = FixedTransportChannelProvider.create(GrpcTransportChannel.create(channel));
+	
+	com.google.cloud.pubsub.v1.Publisher.Builder builder = 
+		Publisher.newBuilder(fullTopic)
+			.setChannelProvider(channelProvider)
+			.setCredentialsProvider(gcpCredentialsProvider);
 
+	/*
+	
+	// ORIGINAL CONNECTOR CODE
+	
     BatchingSettings.Builder batchingSettings =
         BatchingSettings.newBuilder()
             .setDelayThreshold(Duration.ofMillis(maxDelayThresholdMs))
@@ -422,6 +446,9 @@ public class CloudPubSubSinkTask extends SinkTask {
       builder.setEnableCompression(true);
       builder.setCompressionBytesThreshold(compressionBytesThreshold);
     }
+	
+	*/
+		
     try {
       publisher = builder.build();
     } catch (Exception e) {
